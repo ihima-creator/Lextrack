@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  name           String
+  password       String
+  role           Role      @default(CLIENT)
+  phone          String?
+  address        String?
+  language       String    @default("English")
+  whatsappNotify Boolean   @default(false)
+  whatsappPhone  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clientMatters  Matter[]  @relation("ClientMatters")
+  clientMessages Message[] @relation("ClientMessages")
+  lawyerMatters  Matter[]  @relation("LawyerMatters")
+  lawyerMessages Message[] @relation("LawyerMessages")
+  sessions       Session[]
+  accounts       Account[]
+}
+
+enum Role {
+  CLIENT
+  LAWYER
+  ADMIN
+}
+
+model Matter {
+  id                  String               @id @default(cuid())
+  title               String
+  type                MatterType
+  status              MatterStatus         @default(ACTIVE)
+  description         String?
+  openedAt            DateTime             @default(now())
+  closedAt            DateTime?
+  outcome             String?
+  clientId            String
+  client              User                 @relation("ClientMatters", fields: [clientId], references: [id])
+  lawyerId            String
+  lawyer              User                 @relation("LawyerMatters", fields: [lawyerId], references: [id])
+  milestones          Milestone[]
+  hearings            Hearing[]
+  documents           Document[]
+  messages            Message[]
+  invoices            Invoice[]
+  reports             Report[]
+  feedback            Feedback?
+  regulatoryDeadlines RegulatoryDeadline[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+enum MatterType {
+  LITIGATION
+  TRANSACTIONAL
+  COMPLIANCE
+  ADVISORY
+}
+
+enum MatterStatus {
+  ACTIVE
+  ON_HOLD
+  CLOSED
+  ARCHIVED
+}
+
+model Milestone {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  status      MilestoneStatus @default(PENDING)
+  order       Int
+  notes       String?
+  assignedTo  String?
+  matterId    String
+  matter      Matter          @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  documents   Document[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+}
+
+model Hearing {
+  id              String      @id @default(cuid())
+  date            DateTime
+  type            HearingType
+  court           String
+  judge           String?
+  outcome         String?
+  adjournReason   String?
+  mapLink         String?
+  reminderSent48h Boolean     @default(false)
+  reminderSent2h  Boolean     @default(false)
+  matterId        String
+  matter          Matter      @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  createdAt       DateTime    @default(now())
+}
+
+enum HearingType {
+  MENTION
+  SUBSTANTIVE
+  RULING
+  JUDGMENT
+  PRE_TRIAL
+  INTERLOCUTORY
+}
+
+model Document {
+  id          String         @id @default(cuid())
+  name        String
+  category    DocCategory
+  status      DocumentStatus @default(DRAFT)
+  url         String
+  size        Int?
+  mimeType    String?
+  version     Int            @default(1)
+  watermarked Boolean        @default(true)
+  signedAt    DateTime?
+  signedBy    String?
+  uploadedBy  String?
+  uploadNote  String?
+  matterId    String
+  matter      Matter         @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  milestone   Milestone?     @relation(fields: [milestoneId], references: [id])
+  createdAt   DateTime       @default(now())
+}
+
+enum DocCategory {
+  PLEADINGS
+  EVIDENCE
+  CORRESPONDENCE
+  AGREEMENTS
+  COURT_ORDERS
+  REPORTS
+}
+
+enum DocumentStatus {
+  DRAFT
+  FILED
+  SERVED
+  EXECUTED
+  ARCHIVED
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  read           Boolean  @default(false)
+  urgent         Boolean  @default(false)
+  fileUrl        String?
+  fileName       String?
+  matterId       String
+  matter         Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User     @relation("ClientMessages", fields: [senderId], references: [id])
+  lawyerSenderId String?
+  lawyerSender   User?    @relation("LawyerMessages", fields: [lawyerSenderId], references: [id])
+  createdAt      DateTime @default(now())
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  number        String        @unique
+  dueDate       DateTime
+  status        InvoiceStatus @default(OUTSTANDING)
+  subtotal      Float
+  vat           Float
+  total         Float
+  paidAt        DateTime?
+  paymentRef    String?
+  paymentMethod String?
+  notes         String?
+  matterId      String
+  matter        Matter        @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  lineItems     LineItem[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum InvoiceStatus {
+  OUTSTANDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model LineItem {
+  id          String  @id @default(cuid())
+  description String
+  amount      Float
+  category    String
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model RegulatoryDeadline {
+  id           String         @id @default(cuid())
+  title        String
+  description  String?
+  regulation   String
+  authority    String
+  deadlineDate DateTime
+  alertDays    Int            @default(14)
+  status       DeadlineStatus @default(UPCOMING)
+  completedAt  DateTime?
+  consequence  String?
+  reference    String?
+  matterId     String
+  matter       Matter         @relation(fields: [matterId], references: [id], onDelete: Cascade)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+enum DeadlineStatus {
+  UPCOMING
+  DUE_SOON
+  OVERDUE
+  COMPLETED
+  WAIVED
+}
+
+model Report {
+  id          String    @id @default(cuid())
+  title       String
+  dateFrom    DateTime?
+  dateTo      DateTime?
+  generatedAt DateTime  @default(now())
+  content     String?
+  matterId    String
+  matter      Matter    @relation(fields: [matterId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id        String   @id @default(cuid())
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  matterId  String   @unique
+  matter    Matter   @relation(fields: [matterId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      NotificationType
+  read      Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  MILESTONE
+  HEARING
+  DOCUMENT
+  INVOICE
+  MESSAGE
+  SYSTEM
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
